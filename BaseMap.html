@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Runway Map & Database</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <!-- MarkerCluster -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+  <style>
+    html, body { height:100%; margin:0; overflow:hidden; font-family:sans-serif; }
+
+    /* Navbar */
+    #navbar {
+      position:absolute; top:0; left:0; right:0;
+      background:#202123; display:flex; justify-content:center;
+      padding:8px; z-index:1500;
+    }
+    #navbar button {
+      background:none; color:#ececf1; border:none;
+      padding:10px 20px; margin:0 4px; border-radius:6px;
+      cursor:pointer; font-size:15px;
+    }
+    #navbar button:hover { background:#343541; }
+    #navbar button.active { background:#10a37f; color:white; }
+
+    #mapView, #listView {
+      position:absolute; top:50px; left:0; right:0; bottom:0;
+      display:none;
+    }
+    #map { width:100%; height:100%; min-height:100%; }
+
+    /* Info Box */
+    #runwayInfo {
+      display:none; position:absolute; top:60px; left:10px;
+      width:320px; max-height:520px; overflow-y:auto;
+      background:rgba(255,255,255,0.95); padding:10px;
+      border-radius:6px; box-shadow:0 2px 6px rgba(0,0,0,0.3);
+      font-size:13px; z-index:1200;
+    }
+    #runwayInfo button.close-btn { float:right; border:none; background:none; font-size:14px; cursor:pointer; }
+
+    /* Search */
+    .search-box {
+      position:absolute; top:10px; left:50%; transform:translateX(-50%);
+      z-index:1000; background:white; padding:6px 10px; border-radius:6px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.3); text-align:center;
+    }
+    .search-box input { border:none; outline:none; padding:4px 6px; width:240px; margin-bottom:4px; }
+    #counter { font-size:13px; color:#333; }
+
+    /* Logo & watermark */
+    #logo { position:absolute; bottom:10px; left:10px; z-index:1200;
+      background:rgba(255,255,255,0.8); padding:6px; border-radius:6px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.2); }
+    #logo img { height:50px; }
+    #watermark {
+      position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
+      font-size:12px; color:rgba(0,0,0,0.6); pointer-events:none; z-index:1000;
+    }
+
+    /* Runway list */
+    #listView { padding:20px; background:#f9f9f9; overflow:auto; }
+    #listView table { width:100%; border-collapse:collapse; margin-top:10px; }
+    #listView th, #listView td { padding:8px; border:1px solid #ddd; text-align:left; }
+    #listView tr:hover { background:#f2f2f2; cursor:pointer; }
+    #listView th { background:#eee; }
+
+    /* Legend */
+    .legend {
+      background:white; line-height:1.4em; padding:6px 10px; border-radius:6px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.3); font-family:sans-serif;
+    }
+    .legend i { width:14px; height:14px; border-radius:50%; display:inline-block;
+      margin-right:6px; border:2px solid white; }
+
+    /* Photo viewer */
+    .photo-viewer {
+      display:flex; align-items:center; justify-content:center; margin-top:8px;
+    }
+    .photo-viewer img {
+      max-width:280px; max-height:200px; border-radius:8px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.3); margin:0 6px; cursor:pointer;
+    }
+    .photo-btn {
+      background:none; border:none; font-size:18px; cursor:pointer; color:#333;
+    }
+    .photo-btn:hover { color:#10a37f; }
+
+    /* Lightbox */
+    #lightbox {
+      display:none; position:fixed; z-index:5000; top:0; left:0; right:0; bottom:0;
+      background:rgba(0,0,0,0.9); justify-content:center; align-items:center; flex-direction:column;
+    }
+    #lightbox img { max-width:90%; max-height:80%; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.8); }
+    #lightbox-close {
+      position:absolute; top:20px; right:30px; font-size:30px; color:white; cursor:pointer;
+    }
+    #lightbox-prev, #lightbox-next {
+      position:absolute; top:50%; transform:translateY(-50%);
+      background:none; border:none; color:white; font-size:40px; cursor:pointer; padding:10px;
+    }
+    #lightbox-prev { left:40px; }
+    #lightbox-next { right:40px; }
+    #lightbox-prev:hover, #lightbox-next:hover, #lightbox-close:hover { color:#10a37f; }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <div id="navbar">
+    <button class="active" onclick="showSection('mapView', this)">🗺️ Map View</button>
+    <button onclick="showSection('listView', this)">📋 Runway List</button>
+  </div>
+
+  <!-- Map -->
+  <div id="mapView">
+    <div id="map"></div>
+    <div id="runwayInfo"></div>
+    <div class="search-box">
+      <input id="search" type="text" placeholder="Search by airport, ICAO, aircraft..." />
+      <div id="counter">Loading runways...</div>
+    </div>
+    <div id="logo"><img src="logo.png" alt="Logo"></div>
+    <div id="watermark">© Rich.Sauer 2025</div>
+  </div>
+
+  <!-- List -->
+  <div id="listView">
+    <h2>Runway Database</h2>
+    <label>Filter by Category:</label>
+    <select id="catFilterList">
+      <option value="">All</option>
+      <option value="1">Category 1</option>
+      <option value="2">Category 2</option>
+      <option value="3">Category 3</option>
+      <option value="4">Category 4</option>
+    </select>
+    <br><br>
+    <input id="searchList" type="text" placeholder="Search by airport, ICAO, aircraft..." />
+    <table>
+      <thead>
+        <tr>
+          <th>Airport</th><th>ICAO</th><th>Length</th><th>Elevation</th><th>Aircraft</th><th>Category</th><th>Rating</th>
+        </tr>
+      </thead>
+      <tbody id="runwayTableBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Lightbox -->
+  <div id="lightbox" onclick="closeLightbox()">
+    <span id="lightbox-close">✖</span>
+    <button id="lightbox-prev" onclick="event.stopPropagation(); prevPhoto()">&#9664;</button>
+    <img id="lightbox-img" src="" alt="Runway Photo">
+    <button id="lightbox-next" onclick="event.stopPropagation(); nextPhoto()">&#9654;</button>
+  </div>
+
+<script>
+  function showSection(id, btn) {
+    document.getElementById("mapView").style.display="none";
+    document.getElementById("listView").style.display="none";
+    document.getElementById(id).style.display="block";
+    document.querySelectorAll("#navbar button").forEach(b=>b.classList.remove("active"));
+    if(btn) btn.classList.add("active");
+    if(id==="mapView") setTimeout(()=>map.invalidateSize(),200);
+  }
+
+  function dmsToDecimal(dms){ if(!dms)return null;
+    const p=dms.trim().match(/([NSEW])?(\d+)\s+(\d+)\s+(\d+(?:\.\d+)?)/); if(!p)return null;
+    let[,h,d,m,s]=p; let dec=+d+(+m/60)+(+s/3600); if(h==="S"||h==="W")dec=-dec; return dec;
+  }
+  function colorForCategory(cat){ switch(+cat){case 1:return'green';case 2:return'yellow';case 3:return'orange';case 4:return'red';default:return'gray';}}
+  function iconFor(cat){return L.divIcon({className:'runway-icon',html:`<div style="background:${colorForCategory(cat)};width:14px;height:14px;border-radius:50%;border:2px solid white;"></div>`,iconSize:[14,14],iconAnchor:[7,7]});}
+
+  // Photos
+  let currentPhotos=[], currentPhotoIndex=0;
+  function showPhoto(i){ if(!currentPhotos.length)return;
+    if(i<0)i=currentPhotos.length-1; if(i>=currentPhotos.length)i=0;
+    currentPhotoIndex=i;
+    document.getElementById("photoDisplay").src=currentPhotos[i];
+    if(document.getElementById("lightbox").style.display==="flex"){document.getElementById("lightbox-img").src=currentPhotos[i];}
+  }
+  function prevPhoto(){showPhoto(currentPhotoIndex-1);}
+  function nextPhoto(){showPhoto(currentPhotoIndex+1);}
+  function openLightbox(){ if(!currentPhotos.length)return;
+    document.getElementById("lightbox").style.display="flex";
+    document.getElementById("lightbox-img").src=currentPhotos[currentPhotoIndex];
+  }
+  function closeLightbox(){ document.getElementById("lightbox").style.display="none"; }
+  document.addEventListener("keydown",e=>{
+    if(document.getElementById("lightbox").style.display==="flex"){
+      if(e.key==="ArrowRight")nextPhoto();
+      if(e.key==="ArrowLeft")prevPhoto();
+      if(e.key==="Escape")closeLightbox();
+    }
+  });
+
+  function popupHTML(r,lat,lon){
+    const ac=Array.isArray(r.aircraft)?r.aircraft.join(", "):(r.aircraft||"");
+    let photosHTML="";
+    if(r.photos&&r.photos.length>0){
+      photosHTML=`<div class="photo-viewer">
+        <button class="photo-btn" onclick="prevPhoto()">&#9664;</button>
+        <img id="photoDisplay" src="${r.photos[0]}" onclick="openLightbox()">
+        <button class="photo-btn" onclick="nextPhoto()">&#9654;</button>
+      </div>`;
+      currentPhotos=r.photos; currentPhotoIndex=0;
+    } else {currentPhotos=[]; currentPhotoIndex=0;}
+    return `<button class="close-btn" onclick="document.getElementById('runwayInfo').style.display='none'">❌</button>
+      <b>${r.airport}</b><br>
+      ICAO: ${r.icao||''}<br>
+      Length: ${r.length_ft||r.length_m||''} ${r.length_ft?'ft':'m'}<br>
+      Elevation: ${r.elevation_ft||''} ft<br>
+      Direction: ${r.direction||''} ft<br>
+      Aircraft: ${ac}<br>
+      Category: ${r.category||''}<br>
+      Rating: ${r.rating||''}/100<br>
+      Coordinates: ${(r.lat_dms||r.lat)||''}, ${(r.lon_dms||r.lon)||''}<br>
+      (Decimal: ${lat?lat.toFixed(5):''}, ${lon?lon.toFixed(5):''})<br><br>
+      ${photosHTML}`;
+  }
+
+  // Map with speed tweaks
+  const map=L.map('map',{
+    center:[20,0],zoom:2,minZoom:2,maxZoom:17,
+    worldCopyJump:true,maxBounds:[[-85,-180],[85,180]],
+    zoomControl:false,keepBuffer:4,preferCanvas:true
+  });
+
+  const esriClarity=L.tileLayer(
+    'https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { attribution:'Tiles © Esri',detectRetina:true,updateWhenZooming:false,updateInterval:150,keepBuffer:3 }
+  );
+  const hybridLabels=L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{attribution:'Labels © Esri'});
+  const hybrid=L.layerGroup([esriClarity,hybridLabels]); hybrid.addTo(map);
+
+  L.control.layers(
+    {"Street Map":L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'),"Satellite":esriClarity,"Hybrid (Default)":hybrid},
+    null,{position:"topright"}).addTo(map);
+  L.control.zoom({position:"topright"}).addTo(map);
+
+  const clusters=L.markerClusterGroup({spiderfyOnMaxZoom:true,disableClusteringAtZoom:13,chunkedLoading:true,chunkDelay:50,chunkInterval:200});
+  map.addLayer(clusters);
+  let allRunways=[],markerIndex={};
+
+  function render(q=""){clusters.clearLayers();markerIndex={};q=q.toLowerCase();
+    const filtered=allRunways.filter(r=>{
+      if(!q)return true;
+      const h=[r.airport,r.icao,r.category,r.direction,(Array.isArray(r.aircraft)?r.aircraft.join(" "):r.aircraft),r.notes].filter(Boolean).join(" ").toLowerCase();
+      return h.includes(q);
+    });
+    filtered.forEach(r=>{
+      const lat=dmsToDecimal(r.lat_dms||r.lat),lon=dmsToDecimal(r.lon_dms||r.lon);
+      if(lat===null||lon===null)return;
+      const m=L.marker([lat,lon],{icon:iconFor(r.category),title:r.airport});
+      m.on("click",()=>{const box=document.getElementById("runwayInfo");box.style.display="block";box.innerHTML=popupHTML(r,lat,lon);});
+      clusters.addLayer(m); markerIndex[r.airport]=m;
+    });
+    document.getElementById("counter").textContent=`Showing ${filtered.length} runway(s)`;
+  }
+
+  function renderTable(runways,q="",cat=""){const tb=document.getElementById("runwayTableBody");tb.innerHTML="";
+    runways.filter(r=>{if(cat&&r.category!=cat)return false;
+      if(!q)return true;
+      const h=[r.airport,r.icao,r.category,r.direction,(Array.isArray(r.aircraft)?r.aircraft.join(" "):r.aircraft),r.notes].filter(Boolean).join(" ").toLowerCase();
+      return h.includes(q.toLowerCase());
+    }).sort((a,b)=>a.airport.localeCompare(b.airport)).forEach(r=>{
+      const row=document.createElement("tr");
+      row.innerHTML=`<td>${r.airport}</td><td>${r.icao||""}</td><td>${r.length_ft||r.length_m||""}</td><td>${r.elevation_ft||""}</td><td>${Array.isArray(r.aircraft)?r.aircraft.join(", "):r.aircraft||""}</td><td>${r.category||""}</td><td>${r.rating||""}</td>`;
+      row.addEventListener("click",()=>{showSection("mapView",document.querySelector('#navbar button:first-child'));const m=markerIndex[r.airport];
+        if(m){map.setView(m.getLatLng(),14);const box=document.getElementById("runwayInfo");box.style.display="block";box.innerHTML=popupHTML(r,m.getLatLng().lat,m.getLatLng().lng);}});
+      tb.appendChild(row);
+    });
+  }
+
+  fetch("runways.json").then(r=>r.json()).then(d=>{
+    allRunways=d; render(); renderTable(allRunways);
+    document.getElementById("search").addEventListener("input",e=>render(e.target.value));
+    document.getElementById("search").addEventListener("keypress",function(e){
+      if(e.key==="Enter"){const q=this.value.toLowerCase();const match=allRunways.find(r=>{
+        const h=[r.airport,r.icao,(Array.isArray(r.aircraft)?r.aircraft.join(" "):r.aircraft),r.notes].filter(Boolean).join(" ").toLowerCase();
+        return h.includes(q);
+      });
+      if(match){const lat=dmsToDecimal(match.lat_dms||match.lat),lon=dmsToDecimal(match.lon_dms||match.lon);
+        if(lat!==null&&lon!==null){map.setView([lat,lon],14);const box=document.getElementById("runwayInfo");box.style.display="block";box.innerHTML=popupHTML(match,lat,lon);}}
+    }});
+    document.getElementById("searchList").addEventListener("input",e=>renderTable(allRunways,e.target.value,document.getElementById("catFilterList").value));
+    document.getElementById("catFilterList").addEventListener("change",e=>renderTable(allRunways,document.getElementById("searchList").value,e.target.value));
+  });
+
+  const legend=L.control({position:'bottomright'}); legend.onAdd=function(){const d=L.DomUtil.create('div','legend');
+    d.innerHTML=`<b>Category Legend</b><br>
+      <i style="background:green"></i> Okay<br>
+      <i style="background:yellow"></i> Restricted<br>
+      <i style="background:orange"></i> Long Time<br>
+      <i style="background:red"></i> Not Suitable`; return d;}; legend.addTo(map);
+
+  showSection("mapView",document.querySelector('#navbar button:first-child'));
+</script>
+</body>
+</html>
+
+
+// photos 
