@@ -73,6 +73,13 @@
     #listView tr:hover { background:#f2f2f2; cursor:pointer; }
     #listView th { background:#eee; }
 
+    /* Button for photos */
+    .photo-btn-table {
+      background-color:#0078ff; color:white; border:none;
+      border-radius:6px; padding:5px 10px; cursor:pointer;
+    }
+    .photo-btn-table:hover { background-color:#005fcc; }
+
     /* Legend */
     .legend {
       background:white; line-height:1.4em; padding:6px 10px; border-radius:6px;
@@ -147,7 +154,7 @@
     <table>
       <thead>
         <tr>
-          <th>Airport</th><th>ICAO</th><th>Length</th><th>Elevation</th><th>Aircraft</th><th>Category</th><th>Rating</th>
+          <th>Airport</th><th>ICAO</th><th>Length</th><th>Elevation</th><th>Aircraft</th><th>Category</th><th>Rating</th><th>Photos</th>
         </tr>
       </thead>
       <tbody id="runwayTableBody"></tbody>
@@ -184,21 +191,24 @@
   function showPhoto(i){ if(!currentPhotos.length)return;
     if(i<0)i=currentPhotos.length-1; if(i>=currentPhotos.length)i=0;
     currentPhotoIndex=i;
-    document.getElementById("photoDisplay").src=currentPhotos[i];
+    const img = document.getElementById("photoDisplay");
+    if(img) img.src=currentPhotos[i];
     if(document.getElementById("lightbox").style.display==="flex"){document.getElementById("lightbox-img").src=currentPhotos[i];}
   }
   function prevPhoto(){showPhoto(currentPhotoIndex-1);}
   function nextPhoto(){showPhoto(currentPhotoIndex+1);}
-  function openLightbox(){ if(!currentPhotos.length)return;
+  function openLightbox(photos=null,index=0){
+    if(photos){ currentPhotos = photos; currentPhotoIndex = index; }
+    if(!currentPhotos.length) return;
     document.getElementById("lightbox").style.display="flex";
     document.getElementById("lightbox-img").src=currentPhotos[currentPhotoIndex];
   }
   function closeLightbox(){ document.getElementById("lightbox").style.display="none"; }
   document.addEventListener("keydown",e=>{
     if(document.getElementById("lightbox").style.display==="flex"){
-      if(e.key==="ArrowRight")nextPhoto();
-      if(e.key==="ArrowLeft")prevPhoto();
-      if(e.key==="Escape")closeLightbox();
+      if(e.key==="ArrowRight") nextPhoto();
+      if(e.key==="ArrowLeft") prevPhoto();
+      if(e.key==="Escape") closeLightbox();
     }
   });
 
@@ -208,17 +218,17 @@
     if(r.photos&&r.photos.length>0){
       photosHTML=`<div class="photo-viewer">
         <button class="photo-btn" onclick="prevPhoto()">&#9664;</button>
-        <img id="photoDisplay" src="${r.photos[0]}" onclick="openLightbox()">
+        <img id="photoDisplay" src="${r.photos[0]}" onclick="openLightbox()" alt="Runway photo">
         <button class="photo-btn" onclick="nextPhoto()">&#9654;</button>
       </div>`;
       currentPhotos=r.photos; currentPhotoIndex=0;
-    } else {currentPhotos=[]; currentPhotoIndex=0;}
+    } else { currentPhotos=[]; currentPhotoIndex=0; }
     return `<button class="close-btn" onclick="document.getElementById('runwayInfo').style.display='none'">❌</button>
       <b>${r.airport}</b><br>
       ICAO: ${r.icao||''}<br>
       Length: ${r.length_ft||r.length_m||''} ${r.length_ft?'ft':'m'}<br>
       Elevation: ${r.elevation_ft||''} ft<br>
-      Direction: ${r.direction||''} ft<br>
+      Direction: ${r.direction||''}<br>
       Aircraft: ${ac}<br>
       Category: ${r.category||''}<br>
       Rating: ${r.rating||''}/100<br>
@@ -227,86 +237,118 @@
       ${photosHTML}`;
   }
 
-  // Map with speed tweaks
-  const map=L.map('map',{
-    center:[20,0],zoom:2,minZoom:2,maxZoom:17,
-    worldCopyJump:true,maxBounds:[[-85,-180],[85,180]],
-    zoomControl:false,keepBuffer:4,preferCanvas:true
+  // Map with performance tweaks
+  const map = L.map('map', {
+    center:[20,0], zoom:2, minZoom:2, maxZoom:17,
+    worldCopyJump:true, maxBounds:[[-85,-180],[85,180]],
+    zoomControl:false, keepBuffer:4, preferCanvas:true
   });
 
-  const esriClarity=L.tileLayer(
+  const esriClarity = L.tileLayer(
     'https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { attribution:'Tiles © Esri',detectRetina:true,updateWhenZooming:false,updateInterval:150,keepBuffer:3 }
+    { attribution:'Tiles © Esri', detectRetina:true, updateWhenZooming:false, updateInterval:150, keepBuffer:3 }
   );
-  const hybridLabels=L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{attribution:'Labels © Esri'});
-  const hybrid=L.layerGroup([esriClarity,hybridLabels]); hybrid.addTo(map);
+  const hybridLabels = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { attribution:'Labels © Esri' });
+  const hybrid = L.layerGroup([esriClarity, hybridLabels]); hybrid.addTo(map);
 
   L.control.layers(
-    {"Street Map":L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'),"Satellite":esriClarity,"Hybrid (Default)":hybrid},
-    null,{position:"topright"}).addTo(map);
-  L.control.zoom({position:"topright"}).addTo(map);
+    { "Street Map": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'), "Satellite": esriClarity, "Hybrid (Default)": hybrid },
+    null, { position: "topright" }
+  ).addTo(map);
+  L.control.zoom({ position: "topright" }).addTo(map);
 
-  const clusters=L.markerClusterGroup({spiderfyOnMaxZoom:true,disableClusteringAtZoom:13,chunkedLoading:true,chunkDelay:50,chunkInterval:200});
+  const clusters = L.markerClusterGroup({ spiderfyOnMaxZoom:true, disableClusteringAtZoom:13, chunkedLoading:true, chunkDelay:50, chunkInterval:200 });
   map.addLayer(clusters);
-  let allRunways=[],markerIndex={};
+  let allRunways = [], markerIndex = {};
 
-  function render(q=""){clusters.clearLayers();markerIndex={};q=q.toLowerCase();
-    const filtered=allRunways.filter(r=>{
-      if(!q)return true;
-      const h=[r.airport,r.icao,r.category,r.direction,(Array.isArray(r.aircraft)?r.aircraft.join(" "):r.aircraft),r.notes].filter(Boolean).join(" ").toLowerCase();
+  function render(q="") {
+    clusters.clearLayers(); markerIndex = {}; q = q.toLowerCase();
+    const filtered = allRunways.filter(r=>{
+      if(!q) return true;
+      const h = [r.airport, r.icao, r.category, r.direction, (Array.isArray(r.aircraft)?r.aircraft.join(" "):r.aircraft), r.notes].filter(Boolean).join(" ").toLowerCase();
       return h.includes(q);
     });
     filtered.forEach(r=>{
-      const lat=dmsToDecimal(r.lat_dms||r.lat),lon=dmsToDecimal(r.lon_dms||r.lon);
-      if(lat===null||lon===null)return;
-      const m=L.marker([lat,lon],{icon:iconFor(r.category),title:r.airport});
-      m.on("click",()=>{const box=document.getElementById("runwayInfo");box.style.display="block";box.innerHTML=popupHTML(r,lat,lon);});
-      clusters.addLayer(m); markerIndex[r.airport]=m;
+      const lat = dmsToDecimal(r.lat_dms||r.lat), lon = dmsToDecimal(r.lon_dms||r.lon);
+      if(lat===null||lon===null) return;
+      const m = L.marker([lat,lon], { icon: iconFor(r.category), title: r.airport });
+      m.on("click", ()=> {
+        const box = document.getElementById("runwayInfo");
+        box.style.display = "block";
+        box.innerHTML = popupHTML(r, lat, lon);
+      });
+      clusters.addLayer(m);
+      markerIndex[r.airport] = m;
     });
-    document.getElementById("counter").textContent=`Showing ${filtered.length} runway(s)`;
+    document.getElementById("counter").textContent = `Showing ${filtered.length} runway(s)`;
   }
 
-  function renderTable(runways,q="",cat=""){const tb=document.getElementById("runwayTableBody");tb.innerHTML="";
-    runways.filter(r=>{if(cat&&r.category!=cat)return false;
-      if(!q)return true;
-      const h=[r.airport,r.icao,r.category,r.direction,(Array.isArray(r.aircraft)?r.aircraft.join(" "):r.aircraft),r.notes].filter(Boolean).join(" ").toLowerCase();
+  function renderTable(runways, q="", cat="") {
+    const tb = document.getElementById("runwayTableBody"); tb.innerHTML = "";
+    runways.filter(r=>{ if(cat && r.category != cat) return false;
+      if(!q) return true;
+      const h = [r.airport, r.icao, r.category, r.direction, (Array.isArray(r.aircraft)?r.aircraft.join(" "):r.aircraft), r.notes].filter(Boolean).join(" ").toLowerCase();
       return h.includes(q.toLowerCase());
     }).sort((a,b)=>a.airport.localeCompare(b.airport)).forEach(r=>{
-      const row=document.createElement("tr");
-      row.innerHTML=`<td>${r.airport}</td><td>${r.icao||""}</td><td>${r.length_ft||r.length_m||""}</td><td>${r.elevation_ft||""}</td><td>${Array.isArray(r.aircraft)?r.aircraft.join(", "):r.aircraft||""}</td><td>${r.category||""}</td><td>${r.rating||""}</td>`;
-      row.addEventListener("click",()=>{showSection("mapView",document.querySelector('#navbar button:first-child'));const m=markerIndex[r.airport];
-        if(m){map.setView(m.getLatLng(),14);const box=document.getElementById("runwayInfo");box.style.display="block";box.innerHTML=popupHTML(r,m.getLatLng().lat,m.getLatLng().lng);}});
+      const row = document.createElement("tr");
+      const hasPhotos = Array.isArray(r.photos) && r.photos.length > 0;
+      const photoButton = hasPhotos
+        ? `<button class="photo-btn-table" onclick='openLightbox(${JSON.stringify(r.photos)},0)'>View Photos</button>`
+        : `<span style="color:gray;">—</span>`;
+      row.innerHTML = `<td>${r.airport}</td><td>${r.icao||""}</td><td>${r.length_ft||r.length_m||""}</td><td>${r.elevation_ft||""}</td><td>${Array.isArray(r.aircraft)?r.aircraft.join(", "):r.aircraft||""}</td><td>${r.category||""}</td><td>${r.rating||""}</td><td>${photoButton}</td>`;
+      row.addEventListener("click", ()=> {
+        showSection("mapView", document.querySelector('#navbar button:first-child'));
+        const m = markerIndex[r.airport];
+        if(m) {
+          map.setView(m.getLatLng(), 14);
+          const box = document.getElementById("runwayInfo");
+          box.style.display = "block";
+          box.innerHTML = popupHTML(r, m.getLatLng().lat, m.getLatLng().lng);
+        }
+      });
       tb.appendChild(row);
     });
   }
 
   fetch("runways.json").then(r=>r.json()).then(d=>{
-    allRunways=d; render(); renderTable(allRunways);
-    document.getElementById("search").addEventListener("input",e=>render(e.target.value));
-    document.getElementById("search").addEventListener("keypress",function(e){
-      if(e.key==="Enter"){const q=this.value.toLowerCase();const match=allRunways.find(r=>{
-        const h=[r.airport,r.icao,(Array.isArray(r.aircraft)?r.aircraft.join(" "):r.aircraft),r.notes].filter(Boolean).join(" ").toLowerCase();
-        return h.includes(q);
-      });
-      if(match){const lat=dmsToDecimal(match.lat_dms||match.lat),lon=dmsToDecimal(match.lon_dms||match.lon);
-        if(lat!==null&&lon!==null){map.setView([lat,lon],14);const box=document.getElementById("runwayInfo");box.style.display="block";box.innerHTML=popupHTML(match,lat,lon);}}
-    }});
-    document.getElementById("searchList").addEventListener("input",e=>renderTable(allRunways,e.target.value,document.getElementById("catFilterList").value));
-    document.getElementById("catFilterList").addEventListener("change",e=>renderTable(allRunways,document.getElementById("searchList").value,e.target.value));
+    allRunways = d; render(); renderTable(allRunways);
+    document.getElementById("search").addEventListener("input", e => render(e.target.value));
+    document.getElementById("search").addEventListener("keypress", function(e){
+      if(e.key === "Enter"){
+        const q = this.value.toLowerCase();
+        const match = allRunways.find(r=>{
+          const h = [r.airport, r.icao, (Array.isArray(r.aircraft)?r.aircraft.join(" "):r.aircraft), r.notes].filter(Boolean).join(" ").toLowerCase();
+          return h.includes(q);
+        });
+        if(match){
+          const lat = dmsToDecimal(match.lat_dms||match.lat), lon = dmsToDecimal(match.lon_dms||match.lon);
+          if(lat !== null && lon !== null){
+            map.setView([lat, lon], 14);
+            const box = document.getElementById("runwayInfo");
+            box.style.display = "block";
+            box.innerHTML = popupHTML(match, lat, lon);
+          }
+        }
+      }
+    });
+    document.getElementById("searchList").addEventListener("input", e => renderTable(allRunways, e.target.value, document.getElementById("catFilterList").value));
+    document.getElementById("catFilterList").addEventListener("change", e => renderTable(allRunways, document.getElementById("searchList").value, e.target.value));
   });
 
-  const legend=L.control({position:'bottomright'}); legend.onAdd=function(){const d=L.DomUtil.create('div','legend');
-    d.innerHTML=`<b>Category Legend</b><br>
+  const legend = L.control({ position:'bottomright' });
+  legend.onAdd = function(){
+    const d = L.DomUtil.create('div','legend');
+    d.innerHTML = `<b>Category Legend</b><br>
       <i style="background:green"></i> Okay<br>
       <i style="background:yellow"></i> Restricted<br>
       <i style="background:orange"></i> Long Time<br>
-      <i style="background:red"></i> Not Suitable`; return d;}; legend.addTo(map);
+      <i style="background:red"></i> Not Suitable`;
+    return d;
+  };
+  legend.addTo(map);
 
-  showSection("mapView",document.querySelector('#navbar button:first-child'));
+  showSection("mapView", document.querySelector('#navbar button:first-child'));
 </script>
 </body>
 </html>
 
-
-
-// photos 
