@@ -1,3 +1,18 @@
+[
+  {
+    "airport": "Ai-Ais",
+    "icao": "FYAA",
+    "lat_dms": "S27 59 41.06",
+    "lon_dms": "E017 35 48.00",
+    "length_m": 1050,
+    "elevation_ft": 1988,
+    "rating": 78,
+    "category": 3,
+    "direction": "18/36",
+    "aircraft": ["C210/C206", "C208", "BE58", "AC90"],
+    "notes": "",
+    "photos": []
+  },
   {
     "airport": "Aroab",
     "icao": "FYAB",
@@ -2253,4 +2268,5 @@
     "notes": ""
   }
 ]
+
 
