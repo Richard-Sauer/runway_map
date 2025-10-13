@@ -283,19 +283,34 @@
     document.getElementById("counter").textContent = `Showing ${filtered.length} runway(s)`;
   }
 
-  function renderTable(runways, q="", cat="") {
-    const tb = document.getElementById("runwayTableBody"); tb.innerHTML = "";
-    runways.filter(r=>{ if(cat && r.category != cat) return false;
+function renderTable(runways, q="", cat="") {
+  const tb = document.getElementById("runwayTableBody"); 
+  tb.innerHTML = "";
+
+  runways
+    .filter(r => { 
+      if(cat && r.category != cat) return false;
       if(!q) return true;
-      const h = [r.airport, r.icao, r.category, r.direction, (Array.isArray(r.aircraft)?r.aircraft.join(" "):r.aircraft), r.notes].filter(Boolean).join(" ").toLowerCase();
+      const h = [r.airport, r.icao, r.category, r.direction, (Array.isArray(r.aircraft)?r.aircraft.join(" "):r.aircraft), r.notes]
+        .filter(Boolean).join(" ").toLowerCase();
       return h.includes(q.toLowerCase());
-    }).sort((a,b)=>a.airport.localeCompare(b.airport)).forEach(r=>{
+    })
+    .sort((a,b)=>(a.icao||"").localeCompare(b.icao||"")) // ✅ Sort by ICAO instead of airport
+    .forEach(r => {
       const row = document.createElement("tr");
       const hasPhotos = Array.isArray(r.photos) && r.photos.length > 0;
       const photoButton = hasPhotos
         ? `<button class="photo-btn-table" onclick='openLightbox(${JSON.stringify(r.photos)},0)'>View Photos</button>`
         : `<span style="color:gray;">—</span>`;
-      row.innerHTML = `<td>${r.airport}</td><td>${r.icao||""}</td><td>${r.length_ft||r.length_m||""}</td><td>${r.elevation_ft||""}</td><td>${Array.isArray(r.aircraft)?r.aircraft.join(", "):r.aircraft||""}</td><td>${r.category||""}</td><td>${r.rating||""}</td><td>${photoButton}</td>`;
+      row.innerHTML = `
+        <td>${r.airport}</td>
+        <td>${r.icao||""}</td>
+        <td>${r.length_ft||r.length_m||""}</td>
+        <td>${r.elevation_ft||""}</td>
+        <td>${Array.isArray(r.aircraft)?r.aircraft.join(", "):r.aircraft||""}</td>
+        <td>${r.category||""}</td>
+        <td>${r.rating||""}</td>
+        <td>${photoButton}</td>`;
       row.addEventListener("click", ()=> {
         showSection("mapView", document.querySelector('#navbar button:first-child'));
         const m = markerIndex[r.airport];
@@ -308,7 +323,7 @@
       });
       tb.appendChild(row);
     });
-  }
+}
 
   fetch("runways.json").then(r=>r.json()).then(d=>{
     allRunways = d; render(); renderTable(allRunways);
@@ -351,4 +366,5 @@
 </script>
 </body>
 </html>
+
 
